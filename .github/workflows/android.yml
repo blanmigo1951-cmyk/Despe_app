@@ -19,11 +19,17 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Reconstruir archivos de proyecto faltantes
+    - name: Descargar e Instalar Gradle 8.2 Oficial
+      run: |
+        wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip
+        unzip -q gradle-8.2-bin.zip
+        echo "$GITHUB_WORKSPACE/gradle-8.2/bin" >> $GITHUB_PATH
+
+    - name: Generar Estructura del Proyecto
       run: |
         cd android-app
 
-        # 1. Root build.gradle
+        # Root build.gradle
         cat << 'EOF' > build.gradle
         buildscript {
             repositories {
@@ -43,10 +49,10 @@ jobs:
         }
         EOF
 
-        # 2. settings.gradle
+        # settings.gradle
         echo "include ':app'" > settings.gradle
 
-        # 3. app/build.gradle
+        # app/build.gradle
         mkdir -p app
         cat << 'EOF' > app/build.gradle
         apply plugin: 'com.android.application'
@@ -80,7 +86,7 @@ jobs:
         }
         EOF
 
-        # 4. AndroidManifest.xml
+        # AndroidManifest.xml
         mkdir -p app/src/main
         cat << 'EOF' > app/src/main/AndroidManifest.xml
         <?xml version="1.0" encoding="utf-8"?>
@@ -103,13 +109,10 @@ jobs:
         </manifest>
         EOF
 
-    - name: Generar Gradle Wrapper Compatible (v8.2) y Compilar
+    - name: Compilar APK
       run: |
         cd android-app
-        # Forzar versión 8.2 compatible con Android
-        gradle wrapper --gradle-version 8.2
-        chmod +x gradlew
-        ./gradlew :app:assembleDebug --stacktrace
+        gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
