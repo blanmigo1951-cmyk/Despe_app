@@ -19,27 +19,26 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-
-    - name: Repair structure and build APK
+    - name: Diagnostico y Build
       run: |
-        # 1. Moverse al directorio del proyecto Android
+        echo "--- ANALIZANDO ARCHIVOS ---"
         cd android-app
+        # Listar todo recursivamente para ver qué archivos llegaron a GitHub
+        ls -R
         
-        # 2. Si falta settings.gradle, crearlo vinculando el módulo app
-        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-          echo "include ':app'" > settings.gradle
+        # Verificar si existe el build.gradle necesario para compilar
+        if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
+          echo "=========================================================="
+          echo "ERROR: NO ENCONTRÉ 'app/build.gradle'."
+          echo "Tu proyecto en GitHub no tiene la estructura de Android completa."
+          echo "=========================================================="
+          exit 1
         fi
-        
-        # 3. Generar el wrapper oficial de Gradle para evitar incompatibilidades
+
+        echo "--- TODO OK. INICIANDO COMPILACIÓN ---"
         gradle wrapper
-        
-        # 4. Dar permisos de ejecución
         chmod +x gradlew
-        
-        # 5. Compilar la tarea del módulo :app
-        ./gradlew :app:assembleDebug
+        ./gradlew :app:assembleDebug --stacktrace
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
