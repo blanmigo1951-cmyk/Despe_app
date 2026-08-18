@@ -24,22 +24,13 @@ jobs:
       with:
         gradle-version: '8.2'
 
-    - name: Preparar Proyecto y Compilar
+    - name: Generar Entorno Gradle y Compilar
       run: |
-        # Crear estructura de carpetas si no existe
-        mkdir -p android-app/app
+        # 1. Definir el package exacto según la ruta detectada en tus capturas
+        PKG_NAME="com.example.builder"
 
-        cd android-app
-
-        # 1. Detectar package de forma segura
-        PKG_NAME=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';\r\n')
-        if [ -z "$PKG_NAME" ]; then
-          PKG_NAME="com.example.builder"
-        fi
-        echo "Package utilizado: $PKG_NAME"
-
-        # 2. Configurar settings.gradle
-        cat << 'EOF' > settings.gradle
+        # 2. Configurar settings.gradle en android-app/
+        cat << 'EOF' > android-app/settings.gradle
         pluginManagement {
             repositories {
                 google()
@@ -58,29 +49,33 @@ jobs:
         include ':app'
         EOF
 
-        # 3. Configurar build.gradle raíz con bloque de plugins moderno
-        cat << 'EOF' > build.gradle
-        plugins {
-            id 'com.android.application' version '8.1.1' apply false
-            id 'org.jetbrains.kotlin.android' version '1.8.22' apply false
+        # 3. Configurar build.gradle raíz en android-app/
+        cat << 'EOF' > android-app/build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.1.1'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
+            }
         }
         EOF
 
-        # 4. Configurar app/build.gradle usando archivos limpios
-        cat << EOF > app/build.gradle
-        plugins {
-            id 'com.android.application'
-            id 'org.jetbrains.kotlin.android'
-        }
+        # 4. Configurar app/build.gradle con el namespace y dependencias alineadas a SDK 34
+        cat << 'EOF' > android-app/app/build.gradle
+        apply plugin: 'com.android.application'
+        apply plugin: 'kotlin-android'
 
         android {
-            namespace '$PKG_NAME'
-            compileSdk 33
+            namespace 'com.example.builder'
+            compileSdk 34
 
             defaultConfig {
-                applicationId '$PKG_NAME'
+                applicationId 'com.example.builder'
                 minSdk 24
-                targetSdk 33
+                targetSdk 34
                 versionCode 1
                 versionName "1.0"
             }
@@ -95,10 +90,11 @@ jobs:
         }
 
         dependencies {
-            implementation 'androidx.core:core-ktx:1.10.1'
+            implementation 'androidx.core:core-ktx:1.12.0'
             implementation 'androidx.appcompat:appcompat:1.6.1'
             implementation 'com.google.android.material:material:1.9.0'
             implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+            implementation 'androidx.viewpager2:viewpager2:1.0.0'
             implementation 'com.squareup.retrofit2:retrofit:2.9.0'
             implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
             implementation 'com.squareup.okhttp3:okhttp:4.11.0'
@@ -108,8 +104,9 @@ jobs:
         }
         EOF
 
-        # 5. Ejecutar la compilación directa con Gradle Global
-        gradle :app:assembleDebug
+        # 5. Entrar al directorio real y compilar el APK
+        cd android-app
+        gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
