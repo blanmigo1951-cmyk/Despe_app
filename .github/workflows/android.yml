@@ -19,15 +19,19 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Reconstruir Estructura Android Completa
+    - name: Localizar Proyecto y Crear Configuraciones
       run: |
-        # Seleccionar directorio del proyecto
-        if [ -d "android-app" ]; then
-          cd android-app
-        fi
+        # 1. Encontrar la carpeta donde realmente reside el codigo fuente (busca la carpeta src)
+        SRC_DIR=$(find . -maxdepth 4 -type d -name "src" | head -n 1)
+        APP_DIR=$(dirname "$SRC_DIR")
+        
+        echo "Directorio app detectado en: $APP_DIR"
+        mkdir -p "$APP_DIR"
+        ROOT_DIR=$(dirname "$APP_DIR")
+        if [ "$ROOT_DIR" = "." ]; then ROOT_DIR="."; fi
 
-        # 1. settings.gradle (Modo permisivo para repositorios)
-        cat << 'EOF' > settings.gradle
+        # 2. Configurar settings.gradle
+        cat << 'EOF' > "$ROOT_DIR/settings.gradle"
         pluginManagement {
             repositories {
                 google()
@@ -46,8 +50,8 @@ jobs:
         include ':app'
         EOF
 
-        # 2. build.gradle Raiz (Sin bloques repositories para evitar colisión)
-        cat << 'EOF' > build.gradle
+        # 3. Configurar build.gradle Raiz
+        cat << 'EOF' > "$ROOT_DIR/build.gradle"
         buildscript {
             repositories {
                 google()
@@ -60,9 +64,8 @@ jobs:
         }
         EOF
 
-        # 3. app/build.gradle
-        mkdir -p app
-        cat << 'EOF' > app/build.gradle
+        # 4. Configurar app/build.gradle
+        cat << 'EOF' > "$APP_DIR/build.gradle"
         apply plugin: 'com.android.application'
         apply plugin: 'kotlin-android'
 
@@ -101,61 +104,29 @@ jobs:
         }
         EOF
 
-        # 4. Generar Recursos XML Faltantes (Resuelve fallos de Styles/Strings)
-        mkdir -p app/src/main/res/values
-        
-        cat << 'EOF' > app/src/main/res/values/strings.xml
+        # 5. Crear recursos XML esenciales (Evita fallos de estilos y strings)
+        mkdir -p "$APP_DIR/src/main/res/values"
+        cat << 'EOF' > "$APP_DIR/src/main/res/values/strings.xml"
         <resources>
             <string name="app_name">DespeApp</string>
         </resources>
         EOF
 
-        cat << 'EOF' > app/src/main/res/values/styles.xml
+        cat << 'EOF' > "$APP_DIR/src/main/res/values/styles.xml"
         <resources>
             <style name="Theme.AppCompat.Light.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar" />
         </resources>
         EOF
 
-        # 5. AndroidManifest.xml
-        mkdir -p app/src/main
-        cat << 'EOF' > app/src/main/AndroidManifest.xml
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-            <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+        # Guardar la ruta del proyecto raiz para el siguiente paso
+        echo "TARGET_DIR=$ROOT_DIR" >> $GITHUB_ENV
 
-            <application
-                android:allowBackup="true"
-                android:label="@string/app_name"
-                android:supportsRtl="true"
-                android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-                <activity 
-                    android:name=".MainActivity" 
-                    android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-                <service 
-                    android:name=".FloatingBubbleService" 
-                    android:enabled="true" 
-                    android:exported="false" />
-            </application>
-        </manifest>
-        EOF
-
-    - name: Compilar APK con Wrapper Garantizado
+    - name: Compilar APK
       run: |
-        if [ -d "android-app" ]; then
-          cd android-app
-        fi
-        
-        # Forzar generación del ejecutable wrapper oficial
+        cd "$TARGET_DIR"
         gradle wrapper --gradle-version 8.0 --distribution-type bin
         chmod +x gradlew
-        ./gradlew :app:assembleDebug --no-daemon --stacktrace
+        ./gradlew assembleDebug --no-daemon --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
