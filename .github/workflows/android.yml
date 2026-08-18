@@ -24,20 +24,97 @@ jobs:
       with:
         gradle-version: '8.2'
 
-    - name: Otorgar permisos a Gradle Wrapper (si existe)
+    - name: Preparar Entorno Android
       run: |
-        if [ -f "android-app/gradlew" ]; then
-          chmod +x android-app/gradlew
+        cd android-app
+
+        # 1. Detectar el namespace / package real del codigo fuente
+        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';')
+        if [ -z "$DETECTED_PKG" ]; then
+          DETECTED_PKG="com.example.builder"
+        fi
+        echo "Package detectado: $DETECTED_PKG"
+
+        # 2. Generar settings.gradle si falta
+        if [ ! -f "settings.gradle" ]; then
+          cat << 'EOF' > settings.gradle
+        pluginManagement {
+            repositories {
+                google()
+                mavenCentral()
+                gradlePluginPortal()
+            }
+        }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
+            repositories {
+                google()
+                mavenCentral()
+            }
+        }
+        rootProject.name = "DespeApp"
+        include ':app'
+        EOF
+        fi
+
+        # 3. Generar build.gradle raiz si falta
+        if [ ! -f "build.gradle" ]; then
+          cat << 'EOF' > build.gradle
+        buildscript {
+            repositories {
+                google()
+                mavenCentral()
+            }
+            dependencies {
+                classpath 'com.android.tools.build:gradle:8.1.1'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
+            }
+        }
+        EOF
+        fi
+
+        # 4. Asegurar app/build.gradle con el namespace correcto
+        if [ ! -f "app/build.gradle" ]; then
+          cat << EOF > app/build.gradle
+        apply plugin: 'com.android.application'
+        apply plugin: 'kotlin-android'
+
+        android {
+            namespace '$DETECTED_PKG'
+            compileSdk 33
+
+            defaultConfig {
+                applicationId "$DETECTED_PKG"
+                minSdk 24
+                targetSdk 33
+                versionCode 1
+                versionName "1.0"
+            }
+
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+            kotlinOptions {
+                jvmTarget = '17'
+            }
+        }
+
+        dependencies {
+            implementation 'androidx.core:core-ktx:1.10.1'
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+            implementation 'com.google.android.material:material:1.9.0'
+            implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+            implementation 'com.squareup.retrofit2:retrofit:2.9.0'
+            implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+        }
+        EOF
         fi
 
     - name: Compilar APK
       run: |
         cd android-app
-        if [ -f "./gradlew" ]; then
-          ./gradlew assembleDebug --stacktrace
-        else
-          gradle assembleDebug --stacktrace
-        fi
+        gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
