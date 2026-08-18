@@ -19,19 +19,32 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Localizar Proyecto y Crear Configuraciones
-      run: |
-        # 1. Encontrar la carpeta donde realmente reside el codigo fuente (busca la carpeta src)
-        SRC_DIR=$(find . -maxdepth 4 -type d -name "src" | head -n 1)
-        APP_DIR=$(dirname "$SRC_DIR")
-        
-        echo "Directorio app detectado en: $APP_DIR"
-        mkdir -p "$APP_DIR"
-        ROOT_DIR=$(dirname "$APP_DIR")
-        if [ "$ROOT_DIR" = "." ]; then ROOT_DIR="."; fi
+    - name: Setup Gradle 8.2 Nativo
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
 
-        # 2. Configurar settings.gradle
-        cat << 'EOF' > "$ROOT_DIR/settings.gradle"
+    - name: Estructurar Proyecto Android
+      run: |
+        # 1. Crear directorios base
+        mkdir -p app/src/main/java
+        mkdir -p app/src/main/res/values
+
+        # 2. Localizar carpeta src original y copiar preservando la jerarquia
+        SRC_FOLDER=$(find . -not -path "*/app/*" -type d -name "src" | head -n 1)
+        if [ -n "$SRC_FOLDER" ]; then
+          cp -r "$SRC_FOLDER"/* app/src/ 2>/dev/null || true
+        fi
+
+        # 3. Detectar el paquete declarado en el codigo fuente
+        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';')
+        if [ -z "$DETECTED_PKG" ]; then
+          DETECTED_PKG="com.example.builder"
+        fi
+        echo "Package detectado: $DETECTED_PKG"
+
+        # 4. settings.gradle
+        cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
                 google()
@@ -50,8 +63,8 @@ jobs:
         include ':app'
         EOF
 
-        # 3. Configurar build.gradle Raiz
-        cat << 'EOF' > "$ROOT_DIR/build.gradle"
+        # 5. build.gradle Raiz
+        cat << 'EOF' > build.gradle
         buildscript {
             repositories {
                 google()
@@ -64,17 +77,17 @@ jobs:
         }
         EOF
 
-        # 4. Configurar app/build.gradle
-        cat << 'EOF' > "$APP_DIR/build.gradle"
+        # 6. app/build.gradle
+        cat << EOF > app/build.gradle
         apply plugin: 'com.android.application'
         apply plugin: 'kotlin-android'
 
         android {
-            namespace 'com.example.builder'
+            namespace '$DETECTED_PKG'
             compileSdk 33
 
             defaultConfig {
-                applicationId "com.example.builder"
+                applicationId "$DETECTED_PKG"
                 minSdk 24
                 targetSdk 33
                 versionCode 1
@@ -104,29 +117,49 @@ jobs:
         }
         EOF
 
-        # 5. Crear recursos XML esenciales (Evita fallos de estilos y strings)
-        mkdir -p "$APP_DIR/src/main/res/values"
-        cat << 'EOF' > "$APP_DIR/src/main/res/values/strings.xml"
+        # 7. Recursos XML base
+        cat << 'EOF' > app/src/main/res/values/strings.xml
         <resources>
             <string name="app_name">DespeApp</string>
         </resources>
         EOF
 
-        cat << 'EOF' > "$APP_DIR/src/main/res/values/styles.xml"
+        cat << 'EOF' > app/src/main/res/values/styles.xml
         <resources>
             <style name="Theme.AppCompat.Light.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar" />
         </resources>
         EOF
 
-        # Guardar la ruta del proyecto raiz para el siguiente paso
-        echo "TARGET_DIR=$ROOT_DIR" >> $GITHUB_ENV
+        # 8. AndroidManifest.xml
+        cat << EOF > app/src/main/AndroidManifest.xml
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+            <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+            <application
+                android:allowBackup="true"
+                android:label="@string/app_name"
+                android:supportsRtl="true"
+                android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+                <activity 
+                    android:name=".MainActivity" 
+                    android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+                <service 
+                    android:name=".FloatingBubbleService" 
+                    android:exported="false" />
+            </application>
+        </manifest>
+        EOF
 
     - name: Compilar APK
-      run: |
-        cd "$TARGET_DIR"
-        gradle wrapper --gradle-version 8.0 --distribution-type bin
-        chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace
+      run: gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
