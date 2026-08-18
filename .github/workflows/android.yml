@@ -19,14 +19,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Reconstruir Proyecto y Resolver Dependencias
+    - name: Reconstruir Estructura Android Completa
       run: |
-        # Localizar el directorio con el codigo fuente
+        # Seleccionar directorio del proyecto
         if [ -d "android-app" ]; then
           cd android-app
         fi
 
-        # 1. Crear settings.gradle blindado
+        # 1. settings.gradle (Modo permisivo para repositorios)
         cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
@@ -36,7 +36,7 @@ jobs:
             }
         }
         dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
             repositories {
                 google()
                 mavenCentral()
@@ -46,7 +46,7 @@ jobs:
         include ':app'
         EOF
 
-        # 2. Crear build.gradle Raiz
+        # 2. build.gradle Raiz (Sin bloques repositories para evitar colisión)
         cat << 'EOF' > build.gradle
         buildscript {
             repositories {
@@ -58,15 +58,9 @@ jobs:
                 classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
             }
         }
-        allprojects {
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
         EOF
 
-        # 3. Crear app/build.gradle con ViewBinding y AndroidX
+        # 3. app/build.gradle
         mkdir -p app
         cat << 'EOF' > app/build.gradle
         apply plugin: 'com.android.application'
@@ -107,7 +101,22 @@ jobs:
         }
         EOF
 
-        # 4. Crear AndroidManifest.xml completo
+        # 4. Generar Recursos XML Faltantes (Resuelve fallos de Styles/Strings)
+        mkdir -p app/src/main/res/values
+        
+        cat << 'EOF' > app/src/main/res/values/strings.xml
+        <resources>
+            <string name="app_name">DespeApp</string>
+        </resources>
+        EOF
+
+        cat << 'EOF' > app/src/main/res/values/styles.xml
+        <resources>
+            <style name="Theme.AppCompat.Light.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar" />
+        </resources>
+        EOF
+
+        # 5. AndroidManifest.xml
         mkdir -p app/src/main
         cat << 'EOF' > app/src/main/AndroidManifest.xml
         <?xml version="1.0" encoding="utf-8"?>
@@ -118,7 +127,7 @@ jobs:
 
             <application
                 android:allowBackup="true"
-                android:label="DespeApp"
+                android:label="@string/app_name"
                 android:supportsRtl="true"
                 android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                 <activity 
@@ -137,16 +146,16 @@ jobs:
         </manifest>
         EOF
 
-    - name: Forzar Wrapper Gradle 8.0 y Compilar
+    - name: Compilar APK con Wrapper Garantizado
       run: |
         if [ -d "android-app" ]; then
           cd android-app
         fi
         
-        # Generar wrapper compatible e iniciar la compilacion
+        # Forzar generación del ejecutable wrapper oficial
         gradle wrapper --gradle-version 8.0 --distribution-type bin
         chmod +x gradlew
-        ./gradlew :app:assembleDebug --stacktrace
+        ./gradlew :app:assembleDebug --no-daemon --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
