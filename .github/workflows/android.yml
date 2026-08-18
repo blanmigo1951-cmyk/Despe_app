@@ -19,74 +19,80 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Android SDK Tools
-      uses: android-actions/setup-android@v3
+    - name: Setup Gradle 8.2 (Forzar versión global)
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
 
-    - name: Reconstruir Estructura y Compilar APK
+    - name: Generar Archivos del Proyecto (Kotlin DSL)
       run: |
         cd android-app
 
-        # 1. Crear root build.gradle a prueba de errores
-        cat << 'EOF' > build.gradle
-        buildscript {
+        # 1. settings.gradle.kts
+        cat << 'EOF' > settings.gradle.kts
+        pluginManagement {
             repositories {
                 google()
                 mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.1'
-                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
+                gradlePluginPortal()
             }
         }
-
-        allprojects {
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
             repositories {
                 google()
                 mavenCentral()
             }
+        }
+        rootProject.name = "DespeApp"
+        include(":app")
+        EOF
+
+        # 2. Root build.gradle.kts
+        cat << 'EOF' > build.gradle.kts
+        plugins {
+            id("com.android.application") version "8.1.1" apply false
+            id("org.jetbrains.kotlin.android") version "1.8.22" apply false
         }
         EOF
 
-        # 2. Configurar settings.gradle
-        echo "include ':app'" > settings.gradle
-
-        # 3. Crear app/build.gradle con configuración robusta
+        # 3. app/build.gradle.kts
         mkdir -p app
-        cat << 'EOF' > app/build.gradle
+        cat << 'EOF' > app/build.gradle.kts
         plugins {
-            id 'com.android.application'
-            id 'org.jetbrains.kotlin.android'
+            id("com.android.application")
+            id("org.jetbrains.kotlin.android")
         }
 
         android {
-            namespace 'com.example.builder'
-            compileSdk 33
+            namespace = "com.example.builder"
+            compileSdk = 33
 
             defaultConfig {
-                applicationId "com.example.builder"
-                minSdk 24
-                targetSdk 33
-                versionCode 1
-                versionName "1.0"
+                applicationId = "com.example.builder"
+                minSdk = 24
+                targetSdk = 33
+                versionCode = 1
+                versionName = "1.0"
             }
 
             compileOptions {
-                sourceCompatibility JavaVersion.VERSION_17
-                targetCompatibility JavaVersion.VERSION_17
+                sourceCompatibility = JavaVersion.VERSION_17
+                targetCompatibility = JavaVersion.VERSION_17
             }
             kotlinOptions {
-                jvmTarget = '17'
+                jvmTarget = "17"
             }
         }
 
         dependencies {
-            implementation 'androidx.core:core-ktx:1.10.1'
-            implementation 'androidx.appcompat:appcompat:1.6.1'
-            implementation 'com.google.android.material:material:1.9.0'
+            implementation("androidx.core:core-ktx:1.10.1")
+            implementation("androidx.appcompat:appcompat:1.6.1")
+            implementation("com.google.android.material:material:1.9.0")
         }
         EOF
 
-        # 4. Generar AndroidManifest.xml básico si no existe
+        # 4. AndroidManifest.xml si no existe
         mkdir -p app/src/main
         if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
           cat << 'EOF' > app/src/main/AndroidManifest.xml
@@ -111,10 +117,10 @@ jobs:
         EOF
         fi
 
-        # 5. Inicializar Gradle Wrapper interno compatible
-        gradle wrapper --gradle-version 8.0 --distribution-type bin
-        chmod +x gradlew
-        ./gradlew :app:assembleDebug --stacktrace --full-stacktrace
+    - name: Compilar APK
+      run: |
+        cd android-app
+        gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
