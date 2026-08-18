@@ -19,13 +19,12 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Auto-crear estructura completa de Android
+    - name: Reconstruir archivos de proyecto faltantes
       run: |
         cd android-app
-        
-        # 1. Crear root build.gradle si no existe
-        if [ ! -f "build.gradle" ]; then
-          cat << 'EOF' > build.gradle
+
+        # 1. Root build.gradle
+        cat << 'EOF' > build.gradle
         buildscript {
             repositories {
                 google()
@@ -43,17 +42,13 @@ jobs:
             }
         }
         EOF
-        fi
 
-        # 2. Crear settings.gradle si no existe
-        if [ ! -f "settings.gradle" ]; then
-          echo "include ':app'" > settings.gradle
-        fi
+        # 2. settings.gradle
+        echo "include ':app'" > settings.gradle
 
-        # 3. Crear app/build.gradle si no existe
+        # 3. app/build.gradle
         mkdir -p app
-        if [ ! -f "app/build.gradle" ]; then
-          cat << 'EOF' > app/build.gradle
+        cat << 'EOF' > app/build.gradle
         apply plugin: 'com.android.application'
         apply plugin: 'kotlin-android'
 
@@ -69,11 +64,6 @@ jobs:
                 versionName "1.0"
             }
 
-            buildTypes {
-                release {
-                    minifyEnabled false
-                }
-            }
             compileOptions {
                 sourceCompatibility JavaVersion.VERSION_17
                 targetCompatibility JavaVersion.VERSION_17
@@ -87,16 +77,12 @@ jobs:
             implementation 'androidx.core:core-ktx:1.10.1'
             implementation 'androidx.appcompat:appcompat:1.6.1'
             implementation 'com.google.android.material:material:1.9.0'
-            implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-            implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
         }
         EOF
-        fi
 
-        # 4. Crear AndroidManifest.xml básico si no existe en la ruta habitual
+        # 4. AndroidManifest.xml
         mkdir -p app/src/main
-        if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
-          cat << 'EOF' > app/src/main/AndroidManifest.xml
+        cat << 'EOF' > app/src/main/AndroidManifest.xml
         <?xml version="1.0" encoding="utf-8"?>
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET" />
@@ -116,16 +102,16 @@ jobs:
             </application>
         </manifest>
         EOF
-        fi
 
-    - name: Generar Wrapper y Compilar APK
+    - name: Generar Gradle Wrapper Compatible (v8.2) y Compilar
       run: |
         cd android-app
-        gradle wrapper
+        # Forzar versión 8.2 compatible con Android
+        gradle wrapper --gradle-version 8.2
         chmod +x gradlew
-        ./gradlew :app:assembleDebug
+        ./gradlew :app:assembleDebug --stacktrace
 
-    - name: Subir APK
+    - name: Subir APK Generado
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
