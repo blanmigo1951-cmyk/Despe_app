@@ -25,18 +25,18 @@ jobs:
         gradle-version: '8.2'
 
     - name: Preparar Entorno Android
+      working-directory: android-app
       run: |
-        cd android-app
-
-        # 1. Detectar el namespace / package real del codigo fuente
-        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';')
+        # 1. Extraer package/namespace de forma limpia sin caracteres especiales
+        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';\r\n')
+        
         if [ -z "$DETECTED_PKG" ]; then
           DETECTED_PKG="com.example.builder"
         fi
-        echo "Package detectado: $DETECTED_PKG"
+        echo "Package detectado limpiamente: '$DETECTED_PKG'"
 
-        # 2. Generar settings.gradle si falta
-        if [ ! -f "settings.gradle" ]; then
+        # 2. Generar settings.gradle si no existe
+        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
           cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
@@ -57,8 +57,8 @@ jobs:
         EOF
         fi
 
-        # 3. Generar build.gradle raiz si falta
-        if [ ! -f "build.gradle" ]; then
+        # 3. Generar build.gradle raiz si no existe
+        if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
           cat << 'EOF' > build.gradle
         buildscript {
             repositories {
@@ -73,18 +73,20 @@ jobs:
         EOF
         fi
 
-        # 4. Asegurar app/build.gradle con el namespace correcto
-        if [ ! -f "app/build.gradle" ]; then
+        # 4. Generar app/build.gradle con dependencias extendidas para prevenir falta de librerias
+        if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
           cat << EOF > app/build.gradle
-        apply plugin: 'com.android.application'
-        apply plugin: 'kotlin-android'
+        plugins {
+            id 'com.android.application'
+            id 'org.jetbrains.kotlin.android'
+        }
 
         android {
-            namespace '$DETECTED_PKG'
+            namespace "${DETECTED_PKG}"
             compileSdk 33
 
             defaultConfig {
-                applicationId "$DETECTED_PKG"
+                applicationId "${DETECTED_PKG}"
                 minSdk 24
                 targetSdk 33
                 versionCode 1
@@ -105,16 +107,23 @@ jobs:
             implementation 'androidx.appcompat:appcompat:1.6.1'
             implementation 'com.google.android.material:material:1.9.0'
             implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+            
+            // Red y Asincronía
             implementation 'com.squareup.retrofit2:retrofit:2.9.0'
             implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+            implementation 'com.squareup.okhttp3:okhttp:4.11.0'
+            implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1'
+
+            // Ciclo de Vida y Servicios
+            implementation 'androidx.lifecycle:lifecycle-runtime-ktx:2.6.1'
+            implementation 'androidx.lifecycle:lifecycle-service:2.6.1'
         }
         EOF
         fi
 
     - name: Compilar APK
-      run: |
-        cd android-app
-        gradle :app:assembleDebug --stacktrace
+      working-directory: android-app
+      run: gradle :app:assembleDebug --stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
