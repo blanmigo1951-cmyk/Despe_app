@@ -19,19 +19,27 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Preparar Entorno Android
-      working-directory: android-app
-      run: |
-        # 1. Extraer package/namespace de forma limpia
-        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';\r\n')
-        if [ -z "$DETECTED_PKG" ]; then
-          DETECTED_PKG="com.example.builder"
-        fi
-        echo "Package detectado: '$DETECTED_PKG'"
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
 
-        # 2. Generar settings.gradle si no existe
-        if [ ! -f "settings.gradle" ] && [ ! -f "settings.gradle.kts" ]; then
-          cat << 'EOF' > settings.gradle
+    - name: Preparar Proyecto y Compilar
+      run: |
+        # Crear estructura de carpetas si no existe
+        mkdir -p android-app/app
+
+        cd android-app
+
+        # 1. Detectar package de forma segura
+        PKG_NAME=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';\r\n')
+        if [ -z "$PKG_NAME" ]; then
+          PKG_NAME="com.example.builder"
+        fi
+        echo "Package utilizado: $PKG_NAME"
+
+        # 2. Configurar settings.gradle
+        cat << 'EOF' > settings.gradle
         pluginManagement {
             repositories {
                 google()
@@ -49,38 +57,28 @@ jobs:
         rootProject.name = "DespeApp"
         include ':app'
         EOF
-        fi
 
-        # 3. Generar build.gradle raiz si no existe
-        if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
-          cat << 'EOF' > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.1'
-                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
-            }
+        # 3. Configurar build.gradle raíz con bloque de plugins moderno
+        cat << 'EOF' > build.gradle
+        plugins {
+            id 'com.android.application' version '8.1.1' apply false
+            id 'org.jetbrains.kotlin.android' version '1.8.22' apply false
         }
         EOF
-        fi
 
-        # 4. Generar app/build.gradle
-        if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
-          cat << EOF > app/build.gradle
+        # 4. Configurar app/build.gradle usando archivos limpios
+        cat << EOF > app/build.gradle
         plugins {
             id 'com.android.application'
             id 'org.jetbrains.kotlin.android'
         }
 
         android {
-            namespace "${DETECTED_PKG}"
+            namespace '$PKG_NAME'
             compileSdk 33
 
             defaultConfig {
-                applicationId "${DETECTED_PKG}"
+                applicationId '$PKG_NAME'
                 minSdk 24
                 targetSdk 33
                 versionCode 1
@@ -109,14 +107,9 @@ jobs:
             implementation 'androidx.lifecycle:lifecycle-service:2.6.1'
         }
         EOF
-        fi
 
-    - name: Compilar APK con Setup Gradle Action
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
-        build-root-directory: 'android-app'
-        arguments: ':app:assembleDebug --stacktrace'
+        # 5. Ejecutar la compilación directa con Gradle Global
+        gradle :app:assembleDebug
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
