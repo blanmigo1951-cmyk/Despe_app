@@ -19,150 +19,28 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle 8.2 Nativo
+    - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.2'
 
-    - name: Estructurar Proyecto Android
+    - name: Otorgar permisos a Gradle Wrapper (si existe)
       run: |
-        # 1. Crear directorios base
-        mkdir -p app/src/main/java
-        mkdir -p app/src/main/res/values
-
-        # 2. Localizar carpeta src original y copiar preservando la jerarquia
-        SRC_FOLDER=$(find . -not -path "*/app/*" -type d -name "src" | head -n 1)
-        if [ -n "$SRC_FOLDER" ]; then
-          cp -r "$SRC_FOLDER"/* app/src/ 2>/dev/null || true
+        if [ -f "android-app/gradlew" ]; then
+          chmod +x android-app/gradlew
         fi
-
-        # 3. Detectar el paquete declarado en el codigo fuente
-        DETECTED_PKG=$(grep -rn "^package " app/src/main/ 2>/dev/null | head -n 1 | awk '{print $2}' | tr -d ';')
-        if [ -z "$DETECTED_PKG" ]; then
-          DETECTED_PKG="com.example.builder"
-        fi
-        echo "Package detectado: $DETECTED_PKG"
-
-        # 4. settings.gradle
-        cat << 'EOF' > settings.gradle
-        pluginManagement {
-            repositories {
-                google()
-                mavenCentral()
-                gradlePluginPortal()
-            }
-        }
-        dependencyResolutionManagement {
-            repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-            repositories {
-                google()
-                mavenCentral()
-            }
-        }
-        rootProject.name = "DespeApp"
-        include ':app'
-        EOF
-
-        # 5. build.gradle Raiz
-        cat << 'EOF' > build.gradle
-        buildscript {
-            repositories {
-                google()
-                mavenCentral()
-            }
-            dependencies {
-                classpath 'com.android.tools.build:gradle:8.1.1'
-                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
-            }
-        }
-        EOF
-
-        # 6. app/build.gradle
-        cat << EOF > app/build.gradle
-        apply plugin: 'com.android.application'
-        apply plugin: 'kotlin-android'
-
-        android {
-            namespace '$DETECTED_PKG'
-            compileSdk 33
-
-            defaultConfig {
-                applicationId "$DETECTED_PKG"
-                minSdk 24
-                targetSdk 33
-                versionCode 1
-                versionName "1.0"
-            }
-
-            buildFeatures {
-                viewBinding true
-            }
-
-            compileOptions {
-                sourceCompatibility JavaVersion.VERSION_17
-                targetCompatibility JavaVersion.VERSION_17
-            }
-            kotlinOptions {
-                jvmTarget = '17'
-            }
-        }
-
-        dependencies {
-            implementation 'androidx.core:core-ktx:1.10.1'
-            implementation 'androidx.appcompat:appcompat:1.6.1'
-            implementation 'com.google.android.material:material:1.9.0'
-            implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-            implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-            implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
-        }
-        EOF
-
-        # 7. Recursos XML base
-        cat << 'EOF' > app/src/main/res/values/strings.xml
-        <resources>
-            <string name="app_name">DespeApp</string>
-        </resources>
-        EOF
-
-        cat << 'EOF' > app/src/main/res/values/styles.xml
-        <resources>
-            <style name="Theme.AppCompat.Light.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar" />
-        </resources>
-        EOF
-
-        # 8. AndroidManifest.xml
-        cat << EOF > app/src/main/AndroidManifest.xml
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-            <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-
-            <application
-                android:allowBackup="true"
-                android:label="@string/app_name"
-                android:supportsRtl="true"
-                android:theme="@style/Theme.AppCompat.Light.NoActionBar">
-                <activity 
-                    android:name=".MainActivity" 
-                    android:exported="true">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-                <service 
-                    android:name=".FloatingBubbleService" 
-                    android:exported="false" />
-            </application>
-        </manifest>
-        EOF
 
     - name: Compilar APK
-      run: gradle :app:assembleDebug --stacktrace
+      run: |
+        cd android-app
+        if [ -f "./gradlew" ]; then
+          ./gradlew assembleDebug --stacktrace
+        else
+          gradle assembleDebug --stacktrace
+        fi
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
       with:
         name: app-debug
-        path: "**/build/outputs/apk/debug/*.apk"
+        path: "android-app/app/build/outputs/apk/debug/*.apk"
