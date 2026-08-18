@@ -19,17 +19,14 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Descargar e Instalar Gradle 8.2 Oficial
-      run: |
-        wget -q https://services.gradle.org/distributions/gradle-8.2-bin.zip
-        unzip -q gradle-8.2-bin.zip
-        echo "$GITHUB_WORKSPACE/gradle-8.2/bin" >> $GITHUB_PATH
+    - name: Setup Android SDK Tools
+      uses: android-actions/setup-android@v3
 
-    - name: Generar Estructura del Proyecto
+    - name: Reconstruir Estructura y Compilar APK
       run: |
         cd android-app
 
-        # Root build.gradle
+        # 1. Crear root build.gradle a prueba de errores
         cat << 'EOF' > build.gradle
         buildscript {
             repositories {
@@ -38,9 +35,10 @@ jobs:
             }
             dependencies {
                 classpath 'com.android.tools.build:gradle:8.1.1'
-                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.22'
+                classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
             }
         }
+
         allprojects {
             repositories {
                 google()
@@ -49,14 +47,16 @@ jobs:
         }
         EOF
 
-        # settings.gradle
+        # 2. Configurar settings.gradle
         echo "include ':app'" > settings.gradle
 
-        # app/build.gradle
+        # 3. Crear app/build.gradle con configuración robusta
         mkdir -p app
         cat << 'EOF' > app/build.gradle
-        apply plugin: 'com.android.application'
-        apply plugin: 'kotlin-android'
+        plugins {
+            id 'com.android.application'
+            id 'org.jetbrains.kotlin.android'
+        }
 
         android {
             namespace 'com.example.builder'
@@ -86,9 +86,10 @@ jobs:
         }
         EOF
 
-        # AndroidManifest.xml
+        # 4. Generar AndroidManifest.xml básico si no existe
         mkdir -p app/src/main
-        cat << 'EOF' > app/src/main/AndroidManifest.xml
+        if [ ! -f "app/src/main/AndroidManifest.xml" ]; then
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
         <?xml version="1.0" encoding="utf-8"?>
         <manifest xmlns:android="http://schemas.android.com/apk/res/android">
             <uses-permission android:name="android.permission.INTERNET" />
@@ -108,11 +109,12 @@ jobs:
             </application>
         </manifest>
         EOF
+        fi
 
-    - name: Compilar APK
-      run: |
-        cd android-app
-        gradle :app:assembleDebug --stacktrace
+        # 5. Inicializar Gradle Wrapper interno compatible
+        gradle wrapper --gradle-version 8.0 --distribution-type bin
+        chmod +x gradlew
+        ./gradlew :app:assembleDebug --stacktrace --full-stacktrace
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
