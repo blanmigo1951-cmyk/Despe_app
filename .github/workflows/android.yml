@@ -19,11 +19,6 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
-      with:
-        gradle-version: '8.2'
-
     - name: Preparar Entorno Android
       working-directory: android-app
       run: |
@@ -116,15 +111,12 @@ jobs:
         EOF
         fi
 
-    - name: Generar Wrapper y Compilar APK
-      working-directory: android-app
-      run: |
-        # Generar Gradle Wrapper al vuelo
-        gradle wrapper --gradle-version 8.2
-        chmod +x gradlew
-        
-        # Compilar usando el ejecutable local
-        ./gradlew :app:assembleDebug --stacktrace
+    - name: Compilar APK con Setup Gradle Action
+      uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+        build-root-directory: 'android-app'
+        arguments: ':app:assembleDebug --stacktrace'
 
     - name: Subir APK Generado
       uses: actions/upload-artifact@v4
