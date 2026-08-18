@@ -57,7 +57,7 @@ jobs:
         EOF
         fi
 
-        # 3. Generar build.gradle raiz si no existe
+        # 3. Generar build.gradle raíz si no existe
         if [ ! -f "build.gradle" ] && [ ! -f "build.gradle.kts" ]; then
           cat << 'EOF' > build.gradle
         buildscript {
@@ -73,7 +73,7 @@ jobs:
         EOF
         fi
 
-        # 4. Generar app/build.gradle con dependencias extendidas para prevenir falta de librerias
+        # 4. Generar app/build.gradle con soporte extendido de dependencias
         if [ ! -f "app/build.gradle" ] && [ ! -f "app/build.gradle.kts" ]; then
           cat << EOF > app/build.gradle
         plugins {
